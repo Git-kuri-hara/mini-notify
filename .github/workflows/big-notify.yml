@@ -1,0 +1,44 @@
+name: BIG中止監視
+
+on:
+  schedule:
+    # 日本時間 9:00〜20:59 に10分間隔(UTC 0:00〜11:59)。21:00〜翌9:00は実行しない。
+    # 分は毎時0分付近の混雑を避けて 3,13,23,33,43,53 に設定
+    - cron: '3-53/10 0-11 * * *'
+  workflow_dispatch:                # 手動実行(動作確認用)
+
+permissions:
+  contents: write                   # state.json をコミットして前回状態を保持するため
+
+concurrency:
+  group: big-notify
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 監視実行
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          START_ROUND: '1656'
+        run: python big_notify.py
+
+      - name: 状態を保存
+        if: always()
+        run: |
+          git config user.name "big-notify"
+          git config user.email "big-notify@users.noreply.github.com"
+          git add state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "update state"
+            git pull --rebase
+            git push
+          fi
